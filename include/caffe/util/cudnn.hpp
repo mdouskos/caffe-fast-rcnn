@@ -7,6 +7,9 @@
 #include "caffe/common.hpp"
 #include "caffe/proto/caffe.pb.h"
 
+#define CUDNN_VERSION_MIN(major, minor, patch) \
+  (CUDNN_VERSION >= (major * 1000 + minor * 100 + patch))
+
 #define CUDNN_CHECK(condition) \
   do { \
     cudnnStatus_t status = condition; \
@@ -88,8 +91,13 @@ template <typename Dtype>
 inline void createFilterDesc(cudnnFilterDescriptor_t* desc,
     int n, int c, int h, int w) {
   CUDNN_CHECK(cudnnCreateFilterDescriptor(desc));
+#if CUDNN_VERSION_MIN(5, 0, 0)
   CUDNN_CHECK(cudnnSetFilter4dDescriptor(*desc, dataType<Dtype>::type,
-      n, c, h, w));
+      CUDNN_TENSOR_NCHW, n, c, h, w));
+#else
+  CUDNN_CHECK(cudnnSetFilter4dDescriptor_v4(*desc, dataType<Dtype>::type,
+      CUDNN_TENSOR_NCHW, n, c, h, w));
+#endif
 }
 
 template <typename Dtype>
@@ -101,8 +109,14 @@ template <typename Dtype>
 inline void setConvolutionDesc(cudnnConvolutionDescriptor_t* conv,
     cudnnTensorDescriptor_t bottom, cudnnFilterDescriptor_t filter,
     int pad_h, int pad_w, int stride_h, int stride_w) {
+#if CUDNN_VERSION_MIN(6, 0, 0)
   CUDNN_CHECK(cudnnSetConvolution2dDescriptor(*conv,
+      pad_h, pad_w, stride_h, stride_w, 1, 1, CUDNN_CROSS_CORRELATION,
+      dataType<Dtype>::type));
+#else
+    CUDNN_CHECK(cudnnSetConvolution2dDescriptor(*conv,
       pad_h, pad_w, stride_h, stride_w, 1, 1, CUDNN_CROSS_CORRELATION));
+#endif
 }
 
 template <typename Dtype>
@@ -120,8 +134,13 @@ inline void createPoolingDesc(cudnnPoolingDescriptor_t* pool_desc,
     LOG(FATAL) << "Unknown pooling method.";
   }
   CUDNN_CHECK(cudnnCreatePoolingDescriptor(pool_desc));
-  CUDNN_CHECK(cudnnSetPooling2dDescriptor(*pool_desc, *mode, h, w,
-        pad_h, pad_w, stride_h, stride_w));
+#if CUDNN_VERSION_MIN(5, 0, 0)
+  CUDNN_CHECK(cudnnSetPooling2dDescriptor(*pool_desc, *mode,
+        CUDNN_PROPAGATE_NAN, h, w, pad_h, pad_w, stride_h, stride_w));
+#else
+  CUDNN_CHECK(cudnnSetPooling2dDescriptor_v4(*pool_desc, *mode,
+        CUDNN_PROPAGATE_NAN, h, w, pad_h, pad_w, stride_h, stride_w));
+#endif
 }
 
 }  // namespace cudnn
